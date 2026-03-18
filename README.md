@@ -126,6 +126,11 @@ npm run dist
 
 - These tools are free to use with your own API keys and B2 bucket
 - AI naming uses your own Anthropic API key — you pay for your own usage
+
+- ## 📖 Docs
+
+- [Full Photo Site Guide](docs/PHOTO_SITE_GUIDE.md) — end-to-end walkthrough for building a photo site with this stack
+- [Caching Architecture](docs/BACKBLAZE_CLOUDFLARE_CACHING.md) — deep dive on Backblaze B2 + Cloudflare caching
 - B2 uploads use your own Backblaze credentials — your bucket, your files
 - No data is sent to Beanlemon servers
 
