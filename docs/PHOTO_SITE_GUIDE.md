@@ -591,6 +591,12 @@ For a typical hobby photo site:
 - The `.dzi` file and `_files/` folder must share the same base name and be in the same folder
 - Filenames must follow the Beantools naming format for category/species parsing
 
+### Replaced a tile set but still seeing the old version?
+Because files are cached with `immutable`, Cloudflare will never automatically check for updates — even if you re-upload the same filename to B2. To force fresh delivery:
+- Go to **Cloudflare → Caching → Cache Rules → Purge Cache**
+- Purge by URL, entering the full Worker URL path to the `.dzi` and any affected tile paths
+- Alternatively, avoid this issue entirely by using versioned filenames (e.g. appending `_v2`) when replacing a tile set
+
 ---
 
 ## Further Resources
