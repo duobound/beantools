@@ -1,9 +1,9 @@
 # Building a Nature Photo Site with Deep Zoom
-### Backblaze B2 · Cloudflare · libvips · OpenSeadragon · Beantools
+### Cloudflare R2 · Cloudflare · libvips · OpenSeadragon · Beantools
 
 A complete end-to-end guide for building a static nature photography site with deep zoom tile viewing, cloud image storage, and a zero-cost-at-scale serving architecture.
 
-This guide covers the full workflow: from exporting photos in Lightroom, AI-assisted renaming, generating deep zoom tiles, uploading to Backblaze B2, and serving everything efficiently through Cloudflare.
+This guide covers the full workflow: from exporting photos in Lightroom, AI-assisted renaming, generating deep zoom tiles, uploading to Cloudflare R2 (recommended) or Backblaze B2 (fallback), and serving everything efficiently through Cloudflare.
 
 ---
 
@@ -12,12 +12,12 @@ This guide covers the full workflow: from exporting photos in Lightroom, AI-assi
 1. [Overview & Stack](#1-overview--stack)
 2. [Why This Stack?](#2-why-this-stack)
 3. [Prerequisites](#3-prerequisites)
-4. [Backblaze B2 Setup](#4-backblaze-b2-setup)
+4. [Storage Setup](#4-storage-setup)
 5. [Cloudflare Setup](#5-cloudflare-setup)
 6. [Photo Export from Lightroom](#6-photo-export-from-lightroom)
 7. [AI Photo Renaming with Beanlemon Renamer](#7-ai-photo-renaming-with-beanlemon-renamer)
 8. [Generating Deep Zoom Tiles with libvips](#8-generating-deep-zoom-tiles-with-libvips)
-9. [Uploading to B2 with Beanlemon Uploader](#9-uploading-to-b2-with-beanlemon-uploader)
+9. [Uploading with Beanlemon Uploader](#9-uploading-with-beanlemon-uploader)
 10. [The Cloudflare Worker](#10-the-cloudflare-worker)
 11. [OpenSeadragon Integration](#11-openseadragon-integration)
 12. [Caching Architecture & B2 Transaction Costs](#12-caching-architecture--b2-transaction-costs)
@@ -31,11 +31,11 @@ This guide covers the full workflow: from exporting photos in Lightroom, AI-assi
 
 This guide walks through building a static photo site where:
 
-- Photos are stored in **Backblaze B2** (cheap, S3-compatible object storage)
+- Photos are stored in **Cloudflare R2** (recommended) or **Backblaze B2** (fallback)
 - The site is hosted on **Cloudflare Pages** (free static hosting)
-- A **Cloudflare Worker** acts as a secure middleware layer between your site and B2
+- A **Cloudflare Worker** acts as a secure middleware layer between your site and your object storage (R2/B2)
 - Deep zoom tile sets are generated locally with **libvips** and served via **OpenSeadragon**
-- **Beantools** (free, open source) handles photo renaming and B2 uploading on Windows
+- **Beantools** (free, open source) handles photo renaming and R2/B2 uploading on Windows
 
 **The full workflow at a glance:**
 
@@ -46,9 +46,9 @@ Beanlemon Renamer  ←  AI identifies species + suggests structured filename
         ↓
 libvips (vips dzsave)  ←  generates deep zoom tile sets locally
         ↓
-Beanlemon B2 Uploader  ←  uploads .dzi + tile folders to Backblaze B2
+Beanlemon Uploader  ←  uploads .dzi + tile folders to Cloudflare R2 (or B2)
         ↓
-Cloudflare Worker  ←  proxies B2 files with long-term cache headers
+Cloudflare Worker  ←  serves from R2 via native binding with long-term cache headers
         ↓
 OpenSeadragon  ←  renders deep zoom viewer in the browser
         ↓
@@ -103,7 +103,17 @@ Your site, live
 
 ---
 
-## 4. Backblaze B2 Setup
+## 4. Storage Setup
+
+### Cloudflare R2 (recommended)
+
+1. Create a bucket in Cloudflare R2 (e.g. `my-photos`).
+2. Create an **Account API token** with **Object Read & Write** permissions.
+3. Note your **Account ID** (shown in the R2 dashboard).
+
+> **Why R2 is recommended:** Backblaze B2 can hit upload slot limitations (for example `"no tomes available"` errors) when uploading hundreds of small tile files simultaneously; R2 uses direct `PutObject` with no slot system.
+
+### Backblaze B2 (alternative)
 
 ### Create a Bucket
 
@@ -269,9 +279,9 @@ A typical 5000px JPEG will produce a tile set of roughly 15–30 MB depending on
 
 ---
 
-## 9. Uploading to B2 with Beanlemon Uploader
+## 9. Uploading with Beanlemon Uploader
 
-[Beanlemon Uploader](https://github.com/duobound/beantools) is a Windows desktop app that reads your renamed `.dzi` files, parses the category and species from the filename, and uploads the `.dzi` + `_files/` pair to the correct folder in your B2 bucket.
+[Beanlemon Uploader](https://github.com/duobound/beantools) is a Windows desktop app that reads your renamed `.dzi` files, parses the category and species from the filename, and uploads the `.dzi` + `_files/` pair to the correct folder in your selected storage bucket (R2 recommended, B2 fallback).
 
 ### B2 Folder Structure Created
 
@@ -292,7 +302,18 @@ your-bucket/
 
 ### First Launch Setup
 
-Click the **⚙️ B2 Settings** button and enter:
+Click the **⚙️ Settings** button and set the storage type (R2 is default, B2 is available as fallback):
+
+- **R2 (recommended)** — default
+- **B2 (fallback)** — optional
+
+When using **R2**, enter:
+- **Access Key ID** — your R2 S3 Access Key ID
+- **Secret Access Key** — your R2 S3 Secret Access Key
+- **Account ID** — your Cloudflare R2 Account ID
+- **Bucket Name** — your R2 bucket name
+
+When using **B2**, enter:
 - **Key ID** — your B2 Application Key ID
 - **Application Key** — your B2 Application Key
 - **Bucket ID** — your bucket's ID (from the Backblaze bucket page)
@@ -314,24 +335,24 @@ These are saved locally.
 
 ## 10. The Cloudflare Worker
 
-The Cloudflare Worker is the backbone of the serving architecture. It sits between your site and B2, handling:
+The Cloudflare Worker is the backbone of the serving architecture. It sits between your site and your storage (R2/B2), handling:
 
-- **Secure API proxying** — B2 credentials never touch the browser
-- **File proxying with cache headers** — B2 files get long-term cache headers so Cloudflare caches them at the edge
+- **Secure API proxying** — storage credentials never touch the browser
+- **File serving with cache headers** — objects get long-term cache headers so Cloudflare caches them at the edge
 - **CORS** — cross-origin headers so your site can fetch from the Worker
 
 ### Why a Worker Instead of Direct B2 URLs?
 
-If you point your site directly at B2 URLs, every request hits B2 and counts as a transaction. With the Worker in front:
+If you point your site directly at your storage URLs (R2/B2), every request hits your object storage and counts against your usage. With the Worker in front:
 
 ```
 Without Worker:
-Browser → B2 (every request = 1 transaction)
+Browser → storage (every request = 1 read)
 
 With Worker + Cloudflare Cache:
-Browser → Cloudflare Edge (cache hit = 0 B2 transactions)
+Browser → Cloudflare Edge (cache hit = 0 storage reads)
                 ↓ (cache miss, first request only)
-           Cloudflare Worker → B2 (1 transaction, then cached)
+           Cloudflare Worker → storage (1 read, then cached)
 ```
 
 ### Worker Setup
@@ -348,7 +369,28 @@ wrangler init my-photo-worker
 cd my-photo-worker
 ```
 
-**3. Set your B2 secrets**
+**3. Set your R2 binding + variables**
+
+Add an R2 bucket binding named `R2` (so you can call `env.R2.get()`):
+```toml
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "<your-r2-bucket-name>"
+```
+
+Set a `R2_PUBLIC_URL` for reference/testing:
+```bash
+wrangler secret put R2_PUBLIC_URL
+```
+
+Example:
+```
+https://<account-id>.r2.cloudflarestorage.com/<bucket-name>
+```
+
+### B2 proxy approach (alternative for B2 users)
+
+If you prefer the older B2 HTTP proxy approach, set your B2 secrets:
 ```bash
 wrangler secret put B2_KEY_ID
 wrangler secret put B2_APPLICATION_KEY
@@ -366,10 +408,48 @@ https://<bucket-name>.s3.<region>.backblazeb2.com
 The Worker handles two types of requests:
 
 - **API routes** (`/auth`, `/upload`, `/ai-name`, etc.) — proxied to your backend logic with credentials
-- **File routes** (everything else) — fetched from B2 and returned with long-term cache headers
+- **File routes** (everything else) — fetched from storage via native R2 binding (`env.R2.get()`) and returned with long-term cache headers
 
 ```javascript
-// Simplified Worker structure
+// Simplified Worker structure (R2 native binding)
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const path = url.pathname.slice(1); // remove leading /
+    const firstSegment = path.split('/')[0];
+
+    // Reserved API routes
+    const apiRoutes = ['auth', 'upload', 'photos', 'publish', 'ai-name', 'ai-species', 'ai-describe'];
+    
+    if (request.method === 'GET' && !apiRoutes.includes(firstSegment)) {
+      // File serving with caching
+      const object = await env.R2.get(path);
+
+      if (object) {
+        const response = new Response(object.body);
+        response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        response.headers.set('Access-Control-Allow-Origin', '*');
+
+        // Preserve original content-type if available
+        if (object.httpMetadata) {
+          object.writeHttpMetadata(response.headers);
+        }
+
+        return response;
+      }
+
+      return new Response('Not Found', { status: 404 });
+    }
+
+    // Handle API routes here...
+  }
+};
+```
+
+#### B2 proxy example (alternative)
+
+```javascript
+// Simplified Worker structure (B2 HTTP proxy)
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -408,9 +488,9 @@ Your Worker will be live at `https://your-worker.your-subdomain.workers.dev`.
 
 **6. Update your site**
 
-Update all B2 file URLs in your site to point to your Worker instead of B2 directly:
+Update all storage file URLs in your site to point to your Worker instead of storage directly:
 ```
-Before: https://my-photos.s3.us-west-004.backblazeb2.com/birds/tern/photo.dzi
+Before: https://<account-id>.r2.cloudflarestorage.com/<bucket-name>/birds/tern/photo.dzi
 After:  https://your-worker.workers.dev/birds/tern/photo.dzi
 ```
 
@@ -463,6 +543,8 @@ tileSources: [
 
 Understanding the cost model is important for keeping your site free (or very cheap) to run.
 
+With **R2 + the native Worker binding**, files are served directly from R2 through Cloudflare's infrastructure — no separate proxy needed, and cache headers still apply.
+
 ### Backblaze B2 Transaction Classes
 
 | Class | Operations | Free Tier |
@@ -475,7 +557,7 @@ Class B is the one to watch — every file read that reaches B2 counts. On a pho
 
 ### How the Cache Eliminates This
 
-The Worker returns this header on every successful B2 file response:
+The Worker returns this header on every successful storage file response:
 
 ```
 Cache-Control: public, max-age=31536000, immutable
@@ -487,11 +569,17 @@ Cache-Control: public, max-age=31536000, immutable
 | `max-age=31536000` | Cache is valid for 1 year (in seconds) |
 | `immutable` | The file will never change — never revalidate |
 
-Once a file is cached at Cloudflare's edge, all subsequent requests for that file are served from cache. B2 is never contacted. For static photos that never change after upload, this is ideal — effectively infinite free serving after the first cache warm.
+Once a file is cached at Cloudflare's edge, all subsequent requests for that file are served from cache. Your storage backend is never contacted. For static photos that never change after upload, this is ideal — effectively infinite free serving after the first cache warm.
 
 ### B2 + Cloudflare Bandwidth Alliance
 
 Backblaze and Cloudflare have a bandwidth partnership — there are **no egress fees** for data transferred from B2 to Cloudflare. This means your only real cost is storage ($0.006/GB/month after the free 10GB) and the rare cache-miss transaction.
+
+### R2 pricing comparison
+- 10GB free storage
+- $0.015/GB after (after the free tier)
+- 10M free Class B reads/month
+- No egress fees
 
 ### Monitoring Transactions
 
@@ -569,7 +657,7 @@ For a typical hobby photo site:
 
 ## 15. Troubleshooting
 
-### High B2 transaction counts
+### High B2 transaction counts (B2 users only)
 - Check that your Worker is setting `Cache-Control: public, max-age=31536000, immutable` on responses
 - Verify your site is pointing to the Worker URL, not B2 directly
 - During development, avoid repeatedly reloading pages with deep zoom active — each cache miss during dev burns transactions
@@ -579,13 +667,17 @@ For a typical hobby photo site:
 - Verify the `.dzi` path in `tileSources` matches the actual path in B2
 - Make sure the Worker's file proxy route isn't accidentally catching a reserved API route name
 
-### Worker returning 403 from B2
+### Worker returning 403 from B2 (B2 users only)
 - B2 bucket must be set to **Public** for the Worker to fetch files without auth headers
 - Verify your B2 Application Key has read access to the bucket
 
 ### libvips not found in PATH
 - Make sure you added `C:\vips\bin` to your system PATH and restarted your terminal
 - Run `vips --version` to confirm it's accessible
+
+### Files returning 404 (R2 users only)
+- Verify the R2 binding name is `R2` in your Worker settings (so `env.R2.get()` targets the correct binding)
+- Verify the bucket name matches the bucket where your `.dzi` and `_files/` objects were uploaded
 
 ### Beanlemon Uploader not detecting tile pairs
 - The `.dzi` file and `_files/` folder must share the same base name and be in the same folder
