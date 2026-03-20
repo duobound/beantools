@@ -1,8 +1,10 @@
 # Backblaze B2 + Cloudflare Caching Architecture
 
+Note: This architecture originally used Backblaze B2 for storage, but the site has since migrated to Cloudflare R2. The caching principles described still apply — R2 integrates natively with Cloudflare Workers via the R2 binding, eliminating the need to proxy through B2 entirely. Files are now served directly from R2 through the Worker binding with the same immutable cache headers.
+
 ## The Problem
 
-Beanlemon Field Notes stores all photos and deep zoom tiles in a **Backblaze B2** bucket (`Beanlemon-photos`). Backblaze gives you 2,500 free **Class B transactions per day** — a Class B transaction is any file read/download request that hits B2 directly.
+Historically, Beanlemon Field Notes stored all photos and deep zoom tiles in a **Backblaze B2** bucket (`Beanlemon-photos`). Backblaze gives you 2,500 free **Class B transactions per day** — a Class B transaction is any file read/download request that hits B2 directly.
 
 On a photo-heavy site with a tile viewer (OpenSeadragon), it's easy to burn through that cap fast:
 
@@ -17,29 +19,29 @@ The cap is hit not from public traffic, but from your own dev/testing sessions.
 
 ## The Solution: Cloudflare Worker as a Caching Proxy
 
-Instead of the browser fetching files from B2 directly, all requests are routed through a **Cloudflare Worker**. The Worker fetches from B2 once, then Cloudflare caches the response at the edge.
+Instead of the browser fetching files from storage directly, all requests are routed through a **Cloudflare Worker**. The Worker fetches from R2 once, then Cloudflare caches the response at the edge.
 
 ```
-Browser → Cloudflare Worker → (first request only) → Backblaze B2
+Browser → Cloudflare Worker → (first request only) → Cloudflare R2
                 ↓
          Cloudflare Edge Cache
                 ↓
-         All future requests served from cache (B2 never touched)
+All future requests served from cache (storage never touched)
 ```
 
 ### How it works
 
 1. The browser makes a GET request to the Worker URL with the B2 file path
 2. The Worker checks if it's a known API route (auth, upload, AI endpoints, etc.)
-3. If not — it's a file request — the Worker fetches it from B2 using the download URL
-4. On a successful B2 response, the Worker returns the file with:
+3. If not — it's a file request — the Worker fetches it from R2 using the R2 binding
+4. On a successful R2 response, the Worker returns the file with:
 
 ```
 Cache-Control: public, max-age=31536000, immutable
 ```
 
 5. Cloudflare caches this response at the edge for 1 year
-6. Every subsequent request for the same file is served from Cloudflare's cache — **B2 is never contacted again**
+6. Every subsequent request for the same file is served from Cloudflare's cache — **storage is never contacted again**
 
 ---
 
@@ -67,7 +69,7 @@ The Worker distinguishes between API routes and file routes:
 - `ai-name`, `ai-species`, `ai-describe` — AI endpoints
 - `debug` — debugging
 
-**Everything else** is treated as a B2 file path and proxied with cache headers.
+**Everything else** is treated as a file path and proxied with cache headers.
 
 ---
 
@@ -98,6 +100,6 @@ To enable detailed logging going forward: **Backblaze → Bucket → Access Logs
 
 ## Key Takeaway
 
-Cloudflare's free tier is extremely generous with caching and edge serving. Once a file is cached, it costs nothing to serve — no B2 transactions, no bandwidth charges, near-zero latency. The Worker acts as a secure middleware layer that handles both API requests and file serving, with all static assets naturally benefiting from Cloudflare's global cache.
+Cloudflare's free tier is extremely generous with caching and edge serving. Once a file is cached, it costs nothing to serve — no additional storage reads, no bandwidth charges, near-zero latency. The Worker acts as a secure middleware layer that handles both API requests and file serving, with all static assets naturally benefiting from Cloudflare's global cache.
 
-This pattern works for any static asset stored in B2: photos, thumbnails, deep zoom tile sets, or any other file that doesn't change after upload.
+This pattern works for any static asset stored in R2 (or B2): photos, thumbnails, deep zoom tile sets, or any other file that doesn't change after upload.
