@@ -39,12 +39,12 @@ The app will ask for your Anthropic API key and your export folder path. These a
 
 ---
 
-### ☁️ Beanlemon B2 Uploader
-Batch deep zoom tile uploader for Backblaze B2.
+### ☁️ Beanlemon Uploader
+Batch deep zoom tile uploader for Backblaze B2 and Cloudflare R2 (via a toggle in Settings). R2 is the recommended default; B2 remains fully functional.
 
-After processing photos with [libvips](https://www.libvips.org/) (`vips dzsave`) to generate deep zoom tile sets, this tool uploads them to your Backblaze B2 bucket automatically. It reads the category and species from your filename, creates the correct folder structure in B2 if it doesn't exist, and uploads the `.dzi` manifest and `_files/` tile folder together.
+After processing photos with [libvips](https://www.libvips.org/) (`vips dzsave`) to generate deep zoom tile sets, this tool uploads them to your selected storage bucket automatically. It reads the category and species from your filename, creates the correct folder structure if it doesn't exist, and uploads the `.dzi` manifest and `_files/` tile folder together.
 
-**B2 folder structure produced:**
+**Storage folder structure produced:**
 ```
 your-bucket/
 ├── birds/forsters-tern/photo-name.dzi
@@ -55,13 +55,25 @@ your-bucket/
 ```
 
 **What you need:**
-- A Backblaze B2 account and bucket
-- A B2 Application Key ID, Application Key, and Bucket ID
+- For R2:
+  - A Cloudflare account
+  - An R2 bucket
+  - R2 Access Key ID
+  - R2 Secret Access Key
+  - Account ID
+- For B2:
+  - A Backblaze B2 account
+  - Key ID
+  - Application Key
+  - Bucket ID
 - Photos already renamed using the Beanlemon Renamer (or matching the filename format above)
 - Deep zoom tiles already generated locally using `vips dzsave`
 
 **First launch:**
-Click ⚙️ B2 Settings and enter your Key ID, Application Key, and Bucket ID. These are saved locally on your machine.
+Click ⚙️ Uploader Settings and choose the storage backend (R2 recommended default) with the B2/R2 toggle. Enter the credentials for your provider. These are saved locally on your machine.
+
+**Why R2 is recommended by default:**
+B2 has a known upload slot limitation ("no tomes available") that causes retries and slowdowns when uploading many small tile files simultaneously. R2 uses direct PutObject with no slot system, making it significantly faster and more reliable for deep zoom tile uploads.
 
 **Usage:**
 1. Launch **Beanlemon Uploader**
@@ -86,7 +98,7 @@ Beanlemon Renamer  ←  AI identifies species + category
         ↓
 vips dzsave  (generate deep zoom tiles locally)
         ↓
-Beanlemon B2 Uploader  (upload .dzi + _files/ to B2)
+Beanlemon Uploader  (upload .dzi + _files/ to R2 (or B2))
         ↓
 Admin panel  (upload JPEG thumbnail, update gallery JSON)
         ↓
@@ -114,7 +126,7 @@ pip install pyinstaller anthropic pillow appdirs
 pyinstaller --onefile --windowed --name "BeanlemanRenamer" beanlemon_rename_gui.py
 ```
 
-### Beanlemon B2 Uploader (Electron)
+### Beanlemon Uploader (Electron)
 ```
 npm install
 npm run dist
