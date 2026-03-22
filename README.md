@@ -64,85 +64,11 @@ vips must be on PATH.
 
 ---
 
-### 🐦 Beanlemon Renamer
-AI-powered photo renaming tool for nature photographers.
 
-Reads EXIF data from your exported JPEGs, sends each photo to Claude (Anthropic's AI) for species/subject identification, and suggests a structured filename based on date, location, category, species, and behavior. Every field is editable before confirming.
-
-**Filename format produced:**
-```
-DATE_LOCATION_CATEGORY_SPECIES_BEHAVIOR_FOLDER_FILENUMBER.jpg
-20250420_bolsa-chica-ecological-reserve_birds_forsters-tern_landing_100234_7117.jpg
-```
-
-**Categories supported:**
-`birds` · `mammals` · `insects` · `plants` · `aquatic` · `landscapes` · `other`
-
-**What you need:**
-- An Anthropic API key (get one at [console.anthropic.com](https://console.anthropic.com))
-- A folder of exported JPEGs to rename
-
-**Usage:**
-1. Launch **Beanlemon Renamer**
-2. Each photo is shown full size on the left
-3. AI suggests category, species, and behavior — edit any field if needed
-4. Preview the filename before confirming
-5. Press **Enter** or click **✓ Rename & Next**
-6. Press **Escape** to skip a photo
-
----
-
-### ☁️ Beanlemon Uploader
-Batch deep zoom tile uploader for Backblaze B2 and Cloudflare R2.
-
-After processing photos with [libvips](https://www.libvips.org/) (`vips dzsave`) to generate deep zoom tile sets, this tool uploads them to your selected storage bucket automatically. It reads the category and species from your filename, creates the correct folder structure, and uploads the `.dzi` manifest and `_files/` tile folder together.
-
-**Storage folder structure produced:**
-```
-your-bucket/
-├── birds/forsters-tern/photo-name.dzi
-├── birds/forsters-tern/photo-name_files/
-├── mammals/fox-squirrel/photo-name.dzi
-├── landscapes/tide-pools/photo-name.dzi
-└── ...
-```
-
-**What you need:**
-- For R2: Cloudflare account, R2 bucket, Access Key ID, Secret Access Key, Account ID
-- For B2: Backblaze account, Key ID, Application Key, Bucket ID
-- Photos renamed using the Beanlemon Renamer (or matching the filename format above)
-- Deep zoom tiles already generated locally using `vips dzsave`
-
-**Usage:**
-1. Launch **Beanlemon Uploader**
-2. Click **Browse Folder** and select the folder containing your `.dzi` files and `_files/` folders
-3. The app detects all matching pairs automatically and lists them
-4. Uncheck any you want to skip
-5. Click **☁️ Upload All**
-6. Each pair uploads in sequence with a live progress bar
-
-**Note:** This tool uploads tiles only — not JPEG thumbnails. Thumbnails are handled separately by your CMS or admin panel.
-
----
 
 ## Workflow Overview
 
-### Original workflow (separate tools):
-```
-Lightroom export (JPEG)
-        ↓
-Beanlemon Renamer      ←  AI identifies species + category
-        ↓
-vips dzsave            ←  generate deep zoom tiles locally
-        ↓
-Beanlemon Uploader     ←  upload .dzi + _files/ to R2 or B2
-        ↓
-Admin panel            ←  upload JPEG thumbnail, update gallery JSON
-        ↓
-Gallery live at beanlemon.com/gallery.html
-```
-
-### Pipeline workflow (all-in-one):
+### Full workflow:
 ```
 Lightroom export (JPEG)
         ↓
@@ -167,12 +93,6 @@ All tools are available for **Mac** and **Windows** in the [Releases](../../rele
 - `Beanlemon-Pipeline-mac.zip` — extract and run `Beanlemon Pipeline.app`
 - `Beanlemon-Pipeline-win.exe` — run directly, no install needed
 
-### Beanlemon Renamer & Uploader (Windows)
-- `Beanlemon-Renamer-Setup-1.0.0.exe`
-- `Beanlemon-Uploader-Setup-1.0.0.exe`
-
-Download, run the installer, and launch from your Start Menu or Desktop shortcut.
-
 > **Mac note:** On first launch macOS may block the app. Right-click → Open → Open Anyway. Or run once in Terminal: `xattr -cr "/Applications/Beanlemon Pipeline.app"`
 
 ---
@@ -196,17 +116,7 @@ pyinstaller --onefile --windowed --name "Beanlemon Pipeline" \
   beanlemon_pipeline.py
 ```
 
-### Beanlemon Renamer (Python)
-```bash
-pip install pyinstaller anthropic pillow
-pyinstaller --onefile --windowed --name "BeanlemanRenamer" beanlemon_rename_gui.py
-```
 
-### Beanlemon Uploader (Electron)
-```bash
-npm install
-npm run dist
-```
 
 ---
 
